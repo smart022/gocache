@@ -14,7 +14,7 @@ type HTTPPOOL struct{
 	basePath string
 }
 
-func NewHTTPPool(self string) *HTTPPOOL{
+func NewHTTPPOOL(self string) *HTTPPOOL{
 	return &HTTPPOOL{
 		self: self,
 		basePath: defaultBasePath,
@@ -28,7 +28,36 @@ func (p *HTTPPOOL) Log(format string, v ... interface{}){
 
 func (p *HTTPPOOL) ServeHTTP(w http.ResponseWriter, r *http.Request){
 	if !strings.HasPrefix(r.URL.Path, p.basePath){
-		panic("HTTPPOOL serving unexpected path: ",+ r.URL.Path)
+		panic("HTTPPOOL serving unexpected path: "+ r.URL.Path)
 	}
+
+	p.Log("%s %s",r.Method, r.URL.Path)
+
+	parts := strings.SplitN(r.URL.Path[len(p.basePath):],"/",3)
+	//log.Println("0 Debug: ",r.URL.Path[len(p.basePath):]," parts: ",parts)
+	if len(parts)!=3{
+		http.Error(w,"bad request", http.StatusBadRequest)
+		return
+	}
+
+	groupName := parts[1]
+	key := parts[2]
+
+	group := GetGroup(groupName)
+
+	if group == nil{
+		//log.Println("1 Debug: ",groupName ," key: ",key)
+		http.Error(w,"no such group: "+groupName,http.StatusNotFound)
+		return
+	}
+
+	view,err := group.Get(key)
+	if err !=nil{
+		http.Error(w,err.Error(),http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type","application/octet-stream")
+	w.Write(view.ByteSlice())
 
 }
