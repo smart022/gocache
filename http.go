@@ -3,15 +3,24 @@ package gocache
 import (
 	"fmt"
 	"log"
+	"io/ioutil"
 	"net/http"
 	"strings"
+	"sync"
+	"./consistenthash"
 )
 
-const defaultBasePath ="/_gocache"
-
+const (
+	defaultBasePath ="/_gocache"
+	defaultRepicas = 50
+)
+// httppool implements PeerPicker for a pool of HTTP peers
 type HTTPPOOL struct{
 	self string
 	basePath string
+	mu sync.Mutex // guards peers and httpGetters
+	peers *consistenthash.Map
+	httpGetters map[string]*httpGetter // keyed by e.g. "http://10.0.0.1:9999"
 }
 
 func NewHTTPPOOL(self string) *HTTPPOOL{
@@ -61,3 +70,39 @@ func (p *HTTPPOOL) ServeHTTP(w http.ResponseWriter, r *http.Request){
 	w.Write(view.ByteSlice())
 
 }
+
+
+// ----------- client
+
+type httpGetter struct{
+	baseURL string
+}
+
+func (h *httpGetter) Get(group string, key string) ([]byte, error){
+	u:= fmt.Sprintf(
+		"%v%v%v",
+		h.baseURL,
+		url.QueryEscape(group),
+		url.QueryEscape(key),
+	)
+	res, err := http.Get(u)
+	if err!=nil{
+		return nil, err
+	}
+
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK{
+		return nil, fmt.Errorf("server returned: %v",res.Status)
+	}
+
+	bytes, err:= ioutil.ReadAll(res.Body)
+	if err!=nil{
+		return nil, fmt.Errorf("reading response body: %v",err)
+	}
+
+	return bytes, nil
+}
+
+var _ PeerGetter = (*httpGetter)(nil)
+
