@@ -2,6 +2,7 @@ package gocache
 
 // interface that must be implemented to locate 
 // the peer taht owns a specific key.
+// 其实就是的http节点选择的抽象类
 type PeerPicker interface{
 	PickPeer(key string) (peer PeerGetter, ok bool)
 }

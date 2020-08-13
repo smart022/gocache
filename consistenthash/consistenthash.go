@@ -27,6 +27,7 @@ func New(replicas int, fn Hash) *Map{
 	return m
 }
 
+// 添加节点， 节点用string唯一标识
 func (m *Map) Add(keys ...string){
 	for _,key := range keys{
 		for i:=0; i<m.replicas; i++{
@@ -39,6 +40,7 @@ func (m *Map) Add(keys ...string){
 	sort.Ints(m.keys)
 }
 
+// 最近节点定位
 func (m *Map) Get(key string) string{
 	if len(m.keys) ==0{
 		return ""
