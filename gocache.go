@@ -3,6 +3,8 @@ import (
 	"fmt"
 	"sync"
 	"log"
+	"./singleflight"
+	pb "./gocachepb"
 )
 
 type Getter interface{
@@ -21,12 +23,14 @@ type Group struct {
 	name string
 	getter Getter
 	mainCache cache
-	//
+	// 5th
 	peers PeerPicker
+	// 6th
+	loader *singleflight.Group
 }
 
 
-// 歪日，这个group竟然是个全局的map。。。
+// 歪日，这个groups竟然是个全局的map。。。
 var (
 	mu sync.RWMutex
 	groups = make(map[string]*Group)
@@ -43,6 +47,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group{
 		name: name,
 		getter: getter,
 		mainCache: cache{cacheBytes:cacheBytes},
+		loader: &singleflight.Group{},
 	}
 
 	groups[name] = g
@@ -81,22 +86,43 @@ func (g *Group) RegisterPeers(peers PeerPicker){
 
 // 本地无缓存了，往外找
 func (g *Group) load(key string) (value ByteView, err error){
-	if g.peers != nil{
-		if peer,ok := g.peers.PickPeer(key); ok{
-			if value,err = g.getFromPeer(peer,key); err == nil{
-				return value,nil
+
+	// 这样保证每个key 只被拉一次 无论远程或者local
+	// 无论并发数量
+	viewi, err:= g.loader.Do(key, func() (interface{},error) {
+		
+		// 原代码内置
+		if g.peers != nil{
+			if peer,ok := g.peers.PickPeer(key); ok{
+				if value,err = g.getFromPeer(peer,key); err == nil{
+					return value,nil
+				}
+				log.Println("[Gocache] Failed to get from peer",err)
 			}
 		}
+
+		return g.getLocally(key)
+	})
+
+	if err == nil{
+		return viewi.(ByteView), nil
 	}
-	return g.getLocally(key)
+
+	return 
 }
 
 func (g *Group) getFromPeer(peer PeerGetter,key string) (ByteView, error){
-	bytes, err :=peer.Get(g.name,key)
+	req := &pb.Request{
+		Group: g.name,
+		Key: key,
+	}
+	res := &pb.Response{}
+	
+	err :=peer.Get(req,res)
 	if err!=nil{
 		return ByteView{},err
 	}
-	return ByteView{b:bytes},nil
+	return ByteView{b: res.Value},nil
 }
 
 func (g *Group) getLocally(key string) (ByteView, error){
