@@ -28,11 +28,17 @@ func createGroup() *gocache.Group{
 		}))
 }
 
+// HTTPPOOL，是最核心的结构，代表了一个分布式节点-相互通信
+// --------------------
 // cacheserver其实就是 HTTPPOOL， 更上层一点。 cache http 理应不暴露，用户透明
 func startCacheServer(addr string, addrs []string, gee *gocache.Group){
 	// 这句其实 变量的命名不太合适，首先peers是 HTTPPOOL的一个成员，本身是consis.map
 	// 直接用 peers来表示 HTTPPOOL的实例 有点扩大化 peers的语义了
 	// 好像原作者没觉得有什么问题？？
+	// -------------- 上述是我之前理解不够
+	// 其实peers首先是个抽象类， httppool是实现
+	// 至于内部有个peers的成员，也只是用来管理这个类似的概念，内部成员是个狭义的peers，（且具体的实现 一致哈希）
+	// 用来挑选key的owener的
 	peers := gocache.NewHTTPPOOL(addr)
 
 	// 注册环路映射
@@ -52,7 +58,7 @@ func startCacheServer(addr string, addrs []string, gee *gocache.Group){
 	// 但开了下面的东西转接了一下
 }
 
-
+// API 是暴露给用户的，直接使用
 // 这个api 很简单， 就是裹了一层的http 暴露这个查询api node，忽略真实的cache http node，替你查gee group
 func startAPIServer(apiAddr string, gee *gocache.Group){
 	http.Handle("/api",http.HandlerFunc(
@@ -97,8 +103,16 @@ func main(){
 		addrs = append(addrs,v)
 	}
 
-	// run.sh 开了三次 所以gee每次都是新的（严格的说，每个gee的名称都一样，开了三个进程而已） // createGroup 调用了 NewAGroup , 里面用全局map来标定一个 group
-	// 所以每次startCacheServer注册peers的都是新的 替换掉的，最后的peers是 8003
+	// 要区分一下，通信节点 和 通信api 的区别： 节点都有gee但不支持直接用户访问，除非这个节点另外开了个端口给用户通信
+	// 给用户使用的意思是，直接走curl可以调用gee.get()，
+
+	// run.sh 开了三次 所以gee每次都是新的（严格的说，每个gee的名称都一样，开了三个进程而已） (old)
+	// createGroup 调用了 NewAGroup , 里面用全局map来标定一个 group (old)
+	// 上述不太对的地方：每个节点 肯定要带一个gee，这是基础结构啊，肯定每个节点都有一个
+	
+	// 所以每次startCacheServer注册peers的都是新的 替换掉的，最后的peers是 8003 (old)
+	// peers肯定每个节点
+
 	// 解释了为什么第一个log 显示的是 [server 8003]peerpick , 因为gee持有的 peers 是8003，调用了  peerpick，而peerpick内打了log，log会带原server的属性
 	// 第二个log 是 [8001] 比较易见，因为key映射去了 8001，回去 然后调用http.Get，被自己serverHTTP检测到了
 	gee := createGroup()

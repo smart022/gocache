@@ -13,6 +13,22 @@ import (
 	"github.com/golang/protobuf/proto"
 )
 
+/*
+          single node
+		----------------
+		|    HTTPPool   |
+		| ------------  |
+		|    Peers      |<--|   --->  another node
+	|--<|    ServeHTTP  |   |
+	|	|               |   |
+	|	|---------------|   |
+	|	|     group     |   |
+	|	|-------------- |   |
+	--->|   Get()       |>--|
+		|---------------|
+		| Load()        |
+		-----------------
+*/
 const (
 	defaultBasePath ="/_gocache"
 	defaultRepicas = 50
